@@ -460,7 +460,7 @@ def test_gcn_person_batch(model, queryloader, querygalleryloader, galleryloader,
     print("Computing CMC and mAP")
     #print(distmat.shape, q_pids.shape, g_pids.shape, q_camids.shape, g_camids.shape)
     cmc, mAP = evaluate(distmat, q_pids, g_pids, q_camids, g_camids)
-    #cmc_p, mAP_p = evaluate_person(distmat_p, q_pids_p, g_pids_p, q_camids_p, g_camids_p)
+    #cmc_p, mAP_p = evaluate_person(distmat_p, q_pids_p, g_pids_p, q_camids_p, g_camids_p) 
 
     print("Group Reid Results ----------")
     print("mAP: {:.1%}".format(mAP))

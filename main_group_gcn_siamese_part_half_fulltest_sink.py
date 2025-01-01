@@ -19,10 +19,11 @@ from dataset import CUHKGroup
 from utils import AverageMeter, Logger, save_checkpoint, WarmupMultiStepLR, re_ranking, build_adj, build_pairs, build_pairs_correspondence
 from samplers import RandomIdentitySampler
 from losses import CrossEntropyLabelSmooth, TripletLoss, ContrastiveLoss, TripletLossFilter, PermutationLoss
-from eval_metrics import evaluate, evaluate_person
+from eval_metrics import evaluate, evaluate_person, visualization_person
 import models
 import torch.nn.functional as F
 
+# "args": ['--data-root', 'data/CUHK-SYSU/images', '--max-epoch', '10' '--stepsize', '100',  '--eval-step', '300']
 
 parser = argparse.ArgumentParser(description='Train video model with cross entropy loss')
 # Datasets
@@ -124,9 +125,15 @@ def main():
         T.ToTensor(),
         T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
+
+    # train_file = 'data/building_dataset.pkl'
+    # test_file = 'data/building_dataset_test.pkl'
+    # gallery_file = 'data/building_dataset.pkl'
+
     train_file = 'data/cuhk_train.pkl'
     test_file = 'data/cuhk_test.pkl'
     gallery_file = 'data/cuhk_gallery.pkl'
+
     data_root = args.data_root
     dataset_train = CUHKGroup(train_file, data_root, True, transform_train, transform_train_p)
     dataset_test = CUHKGroup(test_file, data_root, False, transform_test, transform_test_p)
@@ -143,11 +150,12 @@ def main():
         pin_memory=pin_memory, drop_last=True,
     )
     else:
-        trainloader = DataLoader(
-            dataset_train,
-            sampler=RandomIdentitySampler(dataset_train, num_instances=args.num_instances),
-            batch_size=args.train_batch, num_workers=args.workers,
-            pin_memory=pin_memory, drop_last=True,
+        trainloader = DataLoader(dataset_train,
+                                 sampler=RandomIdentitySampler(dataset_train, num_instances=args.num_instances),
+                                 batch_size=args.train_batch, 
+                                 num_workers=args.workers,
+                                 pin_memory=pin_memory, 
+                                 drop_last=True,
         )
 
     queryloader = DataLoader(
@@ -162,11 +170,35 @@ def main():
         pin_memory=pin_memory, drop_last=True,
     )
 
+    # querygalleryloader = DataLoader(
+    #     dataset_query,
+    #     batch_size=args.test_batch, shuffle=False, num_workers=args.workers,
+    #     pin_memory=pin_memory, drop_last=False,
+    # )
+
+
     galleryloader = DataLoader(
         dataset_gallery,
         batch_size=args.gallery_batch, shuffle=False, num_workers=args.workers,
         pin_memory=pin_memory, drop_last=True,
     )
+
+    # print("train loader, querygalleryloader, queryloader and galleryloader length is: ", len(trainloader), len(querygalleryloader), len(queryloader), len(galleryloader))
+    print("Batch sizes:")
+    print("Train batch size:", args.train_batch)
+    print("Test batch size:", args.test_batch)
+
+    print("Total number of samples:")
+    print("Train dataset:", len(dataset_train))
+    print("Query dataset:", len(dataset_query))
+    print("Test dataset:", len(dataset_test))
+    print("Gallery dataset:", len(dataset_gallery))
+
+    print("Number of batches:")
+    print("Train loader:", len(trainloader))
+    print("Querygallery loader:", len(querygalleryloader))
+    print("Query loader:", len(queryloader))
+    print("Gallery loader:", len(galleryloader))
 
     print("Initializing model: {}".format(args.arch))
     if args.xent_only:
@@ -212,15 +244,15 @@ def main():
     if args.evaluate:
         print("Evaluate only")
         test_gcn_person_batch(model, queryloader, querygalleryloader, galleryloader, args.pool, use_gpu)
-        #test_gcn_batch(model, queryloader, querygalleryloader, galleryloader, args.pool, use_gpu)
-        #test_gcn(model, queryloader, galleryloader, args.pool, use_gpu)
+        # test_gcn_batch(model, queryloader, querygalleryloader, galleryloader, args.pool, use_gpu)
+        # test_gcn(model, queryloader, galleryloader, args.pool, use_gpu)
         #test(model, queryloader, galleryloader, args.pool, use_gpu)
         return
 
     start_time = time.time()
     best_rank1 = -np.inf
     for epoch in range(start_epoch, args.max_epoch):
-        #print("==> Epoch {}/{}  lr:{}".format(epoch + 1, args.max_epoch, scheduler.get_lr()[0]))
+        print("==> Epoch {}/{}  lr:{}".format(epoch + 1, args.max_epoch, scheduler.get_lr()[0]))
 
         train_gcn(model, criterion_xent, criterion_xent_person, criterion_pair, criterion_htri_filter, criterion_htri, criterion_permutation, optimizer, trainloader, use_gpu)
         #train(model, criterion_xent, criterion_htri, optimizer, trainloader, use_gpu)
@@ -230,7 +262,7 @@ def main():
         if args.eval_step > 0 and (epoch + 1) % args.eval_step == 0 or (epoch + 1) == args.max_epoch:
             print("==> Test")
             rank1 = test_gcn_person_batch(model, queryloader, querygalleryloader, galleryloader, args.pool, use_gpu)
-            #rank1 = test_gcn(model, queryloader, galleryloader, args.pool, use_gpu=False)
+            # rank1 = test_gcn(model, queryloader, galleryloader, args.pool, use_gpu)
             #rank1 = test(model, queryloader, galleryloader, args.pool, use_gpu)
             is_best = rank1 > best_rank1
             if is_best: best_rank1 = rank1
@@ -281,7 +313,7 @@ def train_gcn(model, criterion_xent, criterion_xent_person, criterion_pair, crit
 
         #imgs1, imgs2, gids1, gids2, pimgs1, pimgs2, pids1, pids2, adj1, adj2, siamese_target = build_pairs(imgs, gids, pimgs, pids, adj_new)
         imgs1, imgs2, gids1, gids2, pimgs1, pimgs2, pids1, pids2, adj1, adj2, siamese_target, sinkhorn_target = build_pairs_correspondence(imgs, gids, pimgs, pids, adj_new)
-
+        # print('shapeeeee: ', pimgs1.shape)
         pids1 = pids1.reshape(-1)
         pids2 = pids2.reshape(-1)
         #print(pids)
@@ -303,6 +335,7 @@ def train_gcn(model, criterion_xent, criterion_xent_person, criterion_pair, crit
             #loss = criterion_xent(outputs, pids)
             loss = criterion_xent(outputs, gids)
         else:
+            torch.cuda.synchronize()
             # combine hard triplet loss with cross entropy loss
             features1, features2, features_p1, features_p2, outputs_p1, outputs_p2, outputs_g1, outputs_g2, sinkhorn_matrix = model(pimgs1, pimgs2, adj1, adj2)
             #print(outputs.size(), features.size())
@@ -333,20 +366,21 @@ def train_gcn(model, criterion_xent, criterion_xent_person, criterion_pair, crit
         if (batch_idx+1) % args.print_freq == 0:
             print("Batch {}/{}\t Loss {:.6f} ({:.6f})".format(batch_idx+1, len(trainloader), losses.val, losses.avg))
 
+        print('Loss is: ', loss.data.item())
 def test_gcn(model, queryloader, galleryloader, pool, use_gpu, ranks=[1, 5, 10, 20]):
     model.eval()
 
     q_pids, q_camids = [], []
     g_pids, g_camids = [], []
-
-    for batch_idx, (_, gids, pimgs, pids, camids) in enumerate(queryloader):
+    start_time = time.time()
+    for batch_idx, (_, gids, pimgs, pids, camids, _) in enumerate(queryloader):
         q_pids.extend(gids)
         q_camids.extend(camids)
     q_pids = np.asarray(q_pids)
     q_camids = np.asarray(q_camids)
     max_qcam = camids + 1
 
-    for batch_idx, (_, gids, pimgs, pids, camids) in enumerate(galleryloader):
+    for batch_idx, (_, gids, pimgs, pids, camids, _) in enumerate(galleryloader):
         g_pids.extend(gids)
         g_camids.extend(camids + max_qcam)
     g_pids = np.asarray(g_pids)
@@ -359,7 +393,8 @@ def test_gcn(model, queryloader, galleryloader, pool, use_gpu, ranks=[1, 5, 10, 
     g_pids = np.concatenate((q_pids, g_pids), axis=0) 
 
     with torch.no_grad():
-        for batch_idx, (_, gids, pimgs, pids, camids) in enumerate(queryloader):
+        start_time = time.time()
+        for batch_idx, (_, gids, pimgs, pids, camids, _) in enumerate(queryloader):
             if use_gpu:
                 pimgs = pimgs.cuda()
             pimgs = Variable(pimgs)
@@ -375,7 +410,7 @@ def test_gcn(model, queryloader, galleryloader, pool, use_gpu, ranks=[1, 5, 10, 
             adj = Variable(adj)
 
 
-            for batch_idx_q, (_, gids_q, pimgs_q, pids_q, camids_q) in enumerate(queryloader):
+            for batch_idx_q, (_, gids_q, pimgs_q, pids_q, camids_q, _) in enumerate(queryloader):
                 if use_gpu:
                     pimgs_q = pimgs_q.cuda()
                 pimgs_q = Variable(pimgs_q)
@@ -388,7 +423,7 @@ def test_gcn(model, queryloader, galleryloader, pool, use_gpu, ranks=[1, 5, 10, 
                 if use_gpu:
                     adj_q = adj_q.cuda()
                 adj_q = Variable(adj_q)
-                features1, features2 = model(pimgs, pimgs_q, [adj], [adj_q])
+                features1, features2, _, _ = model(pimgs, pimgs_q, [adj], [adj_q])
                 #dist = torch.pow(features1, 2).sum(dim=1, keepdim=True) + \
                 #          torch.pow(features2, 2).sum(dim=1, keepdim=True).t()
                 #dist.addmm_(1, -2, features1, features2.t())
@@ -397,20 +432,21 @@ def test_gcn(model, queryloader, galleryloader, pool, use_gpu, ranks=[1, 5, 10, 
                 #print(dist)
                 distmat[batch_idx, batch_idx_q] = dist
 
-            for batch_idx_g, (_, gids_g, pimgs_g, pids_g, camids_g) in enumerate(galleryloader):
+            for batch_idx_g, (_, gids_g, pimgs_g, pids_g, camids_g, _) in enumerate(galleryloader):
                 if use_gpu:
                     pimgs_g = pimgs_g.cuda()
                 pimgs_g = Variable(pimgs_g)
                 # pimgs = pimgs.permute(1, 0, 2, 3, 4)
                 b, s, c, h, w = pimgs_g.size()
-                pimgs_g = pimgs_g.view(s, c, h, w)
-                assert (b == 1)
+                # pimgs_g = pimgs_g.view(s, c, h, w)
+                pimgs_g = pimgs_g.view(b*s, c, h, w)
+                # assert (b == 1)
                 num_nodes = s
                 adj_g = torch.ones((num_nodes, num_nodes))
                 if use_gpu:
                     adj_g = adj_g.cuda()
                 adj_g = Variable(adj_g)
-                features1, features2 = model(pimgs, pimgs_g, [adj], [adj_g])
+                features1, features2, _, _ = model(pimgs, pimgs_g, [adj], [adj_g])
                 #dist = torch.pow(features1, 2).sum(dim=1, keepdim=True) + \
                 #          torch.pow(features2, 2).sum(dim=1, keepdim=True).t()
                 #dist.addmm_(1, -2, features1, features2.t())
@@ -418,6 +454,9 @@ def test_gcn(model, queryloader, galleryloader, pool, use_gpu, ranks=[1, 5, 10, 
                 dist = F.pairwise_distance(features1, features2)
                 #print(dist)
                 distmat[batch_idx, batch_idx_g + m] = dist
+            end_time = time.time()
+            print("image {:04d}, time : {:f}".format(batch_idx, end_time - start_time))
+            
     distmat = distmat.numpy()
     #print(distmat)
 
@@ -430,6 +469,9 @@ def test_gcn(model, queryloader, galleryloader, pool, use_gpu, ranks=[1, 5, 10, 
     for r in ranks:
         print("Rank-{:<3}: {:.1%}".format(r, cmc[r-1]))
     print("------------------")
+
+    #save rank list
+    visualization_person(distmat, q_pids, g_pids, q_camids, g_camids)
 
     '''
     dist_qq = torch.pow(qf, 2).sum(dim=1, keepdim=True).expand(m, m) + \
@@ -465,6 +507,7 @@ def test_gcn_person_batch(model, queryloader, querygalleryloader, galleryloader,
 
     q_pids, q_pids_p, q_camids, q_camids_p = [], [], [], []
     g_pids, g_pids_p, g_camids, g_camids_p = [], [], [], []
+    
     for batch_idx, (_, gids, pimgs, pids, camids, _) in enumerate(queryloader):
         q_pids.extend(gids)
         q_pids_p.extend(pids)
@@ -477,6 +520,14 @@ def test_gcn_person_batch(model, queryloader, querygalleryloader, galleryloader,
     q_camids = np.asarray(q_camids)
     q_camids_p = np.asarray(q_camids_p)
     max_qcam = camids + 1
+
+    # Debug prints for queryloader
+    print("After queryloader:")
+    print("q_pids:", q_pids)
+    print("q_pids_p:", q_pids_p)
+    print("q_camids:", q_camids)
+    print("q_camids_p:", q_camids_p)
+
     print(q_pids.shape, q_pids_p.shape, q_camids.shape, q_camids_p.shape)
 
     for batch_idx, (_, gids, pimgs, pids, camids, _) in enumerate(querygalleryloader):
@@ -494,11 +545,21 @@ def test_gcn_person_batch(model, queryloader, querygalleryloader, galleryloader,
             #print(camids[i].item())
             g_camids.extend([camids[i]])
             g_camids_p.extend([camids[i]]* len(tmp_pids[i]))
+    
+
         #g_camids_p.extend([camids]* len(pids))
-    #g_pids = np.asarray(g_pids)
-    #g_pids_p = np.asarray(g_pids_p)
-    #g_camids = np.asarray(g_camids)
-    #g_camids_p = np.asarray(g_camids_p)
+    # g_pids = np.asarray(g_pids)
+    # g_pids_p = np.asarray(g_pids_p)
+    # g_camids = np.asarray(g_camids)
+    # g_camids_p = np.asarray(g_camids_p)
+
+    # Debug prints for querygalleryloader
+    print("After querygalleryloader:")
+    print("g_pids:", g_pids)
+    print("g_pids_p:", g_pids_p)
+    print("g_camids:", g_camids)
+    print("g_camids_p:", g_camids_p)
+
     #print(g_pids.shape, g_pids_p.shape, g_camids.shape, g_camids_p.shape)
 
     for batch_idx, (_, gids, pimgs, pids, camids, _) in enumerate(galleryloader):
@@ -520,7 +581,18 @@ def test_gcn_person_batch(model, queryloader, querygalleryloader, galleryloader,
     g_pids = np.asarray(g_pids)
     g_pids_p = np.asarray(g_pids_p)
     g_camids = np.asarray(g_camids)
+
+    # Debug prints for querygalleryloader
+    print("After galleryloader:")
+    print("g_pids:", g_pids)
+    print("g_pids_p:", g_pids_p)
+    print("g_camids:", g_camids)
+    print("g_camids_p:", g_camids_p)
+    
+    # Ensure g_camids_p is a sequence of elements with the same shape and type
+    g_camids_p = [np.asarray(item) for item in g_camids_p if isinstance(item, (list, np.ndarray))]
     g_camids_p = np.asarray(g_camids_p)
+    # g_camids_p = np.asarray(g_camids_p)
     print(g_pids.shape, g_pids_p.shape, g_camids.shape, g_camids_p.shape)
 
     m, n = q_pids.shape[0], g_pids.shape[0]
@@ -670,16 +742,20 @@ def test_gcn_person_batch(model, queryloader, querygalleryloader, galleryloader,
     print("CMC curve")
     for r in ranks:
         print("Rank-{:<3}: {:.1%}".format(r, cmc[r-1]))
-    print("------------------")
 
-    print(distmat_p.shape, q_pids_p.shape, g_pids_p.shape, q_camids_p.shape, g_camids_p.shape)
-    cmc_p, mAP_p = evaluate_person(distmat_p, q_pids_p, g_pids_p, q_camids_p, g_camids_p)
-    print("Person Reid Results ----------")
-    print("mAP: {:.1%}".format(mAP_p))
-    print("CMC curve")
-    for r in ranks:
-        print("Rank-{:<3}: {:.1%}".format(r, cmc_p[r - 1]))
-    print("------------------")
+    #save rank list
+    visualization_person(distmat, q_pids, g_pids, q_camids, g_camids)
+
+    # print("------------------")
+
+    # print(distmat_p.shape, q_pids_p.shape, g_pids_p.shape, q_camids_p.shape, g_camids_p.shape)
+    # cmc_p, mAP_p = evaluate_person(distmat_p, q_pids_p, g_pids_p, q_camids_p, g_camids_p)
+    # print("Person Reid Results ----------")
+    # print("mAP: {:.1%}".format(mAP_p))
+    # print("CMC curve")
+    # for r in ranks:
+    #     print("Rank-{:<3}: {:.1%}".format(r, cmc_p[r - 1]))
+    # print("------------------")
 
     return cmc[0]
 
