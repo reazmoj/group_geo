@@ -6,7 +6,8 @@ We use python 3.7 and pytorch=1.0.1 torchvision=0.2.1
 
 ### Data preparation
 All experiments are done on CSG. Please download CUHK-SYSU.
-Move your dataset to data/ directory
+
+Move your dataset to data directory
 
 Original dataset webpage: [CUHK-SYSU Person Search Dataset](http://www.ee.cuhk.edu.hk/~xgwang/PS/dataset.html) or [JDE dataset zoo](https://github.com/Zhongdao/Towards-Realtime-MOT/blob/master/DATASET_ZOO.md)
 
