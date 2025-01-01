@@ -6,6 +6,7 @@ import pickle
 from PIL import Image
 import os
 from os.path import dirname as ospdn
+import glob
 
 def evaluate(distmat, q_pids, g_pids, q_camids, g_camids, max_rank=50):
     num_q, num_g = distmat.shape
@@ -265,14 +266,21 @@ def save_rank_list_to_im(rank_list, same_id, q_im_path, g_im_paths, save_path):
 
 
 def visualization_person(distmat, q_pids, g_pids, q_camids, g_camids):
-    src_path = '/home/yy1/group_reid_graph_new/data/vis'
-    dst_path = '/home/yy1/group_reid_graph_new/data/vis_part_result'
+    # src_path = '/home/yy1/group_reid_graph_new/data/vis'
+    # dst_path = '/home/yy1/group_reid_graph_new/data/vis_part_result'
+    src_path = 'data/building/images'
+    dst_path = 'data/building/test/result'
+
     if not os.path.exists(dst_path):
         os.mkdir(dst_path)
-    g_im_paths = [os.path.join(src_path, '{:04d}.jpg'.format(i)) for i in range(q_pids.shape[0])]
-    save_paths = [os.path.join(dst_path, '{:04d}.jpg'.format(i)) for i in range(q_pids.shape[0])]
+    # g_im_paths = [os.path.join(src_path, '{:04d}.jpg'.format(i)) for i in range(q_pids.shape[0])]
+    # save_paths = [os.path.join(dst_path, '{:04d}.jpg'.format(i)) for i in range(q_pids.shape[0])]
+
+    g_im_paths = sorted(glob.glob(os.path.join(src_path, '*.jpg')))
+    save_paths = [os.path.join(dst_path, os.path.basename(im_path)) for im_path in g_im_paths]
+    
     for i in range(q_pids.shape[0]):
-        if q_pids[i]==-1:
+        if q_pids[i] == '-1':
             continue
         rank_list, same_id = get_rank_list(
             distmat[i], q_pids[i], q_camids[i], g_pids, g_camids, 10)
